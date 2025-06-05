@@ -1,4 +1,7 @@
+import '@opentelemetry/auto-instrumentations-node/register'
+
 import fastifyCors from '@fastify/cors'
+import { trace } from '@opentelemetry/api'
 import { fastify } from 'fastify'
 import {
   serializerCompiler,
@@ -10,6 +13,8 @@ import { z } from 'zod'
 import { sendOrderCreatedMessage } from '../broker/messages/order-created.ts'
 import { db } from '../database/client.ts'
 import { schema } from '../database/schema/index.ts'
+import { setTimeout } from 'node:timers/promises'
+import { tracer } from '../tracer/tracer.ts'
 
 export const app = fastify().withTypeProvider<ZodTypeProvider>()
 
@@ -39,18 +44,28 @@ app.post(
     const id = randomUUID()
     const customerId = '1'
 
+    await db.insert(schema.orders).values({
+      id,
+      amount,
+      customerId,
+    })
+
+    const span = tracer.startSpan('aqui ta lento piazao')
+
+    span.setAttribute('meu span', 'é us guri')
+
+    await setTimeout(3000)
+
+    span.end()
+
+    trace.getActiveSpan()?.setAttribute('order_id', id)
+
     sendOrderCreatedMessage({
       orderId: id,
       amount,
       customer: {
         id: customerId,
       },
-    })
-
-    await db.insert(schema.orders).values({
-      id,
-      amount,
-      customerId,
     })
 
     return reply.status(201).send({ amount })
